@@ -40,8 +40,8 @@ _next_start = 0.0
 def _get(url: str, cache):
     """Serialize all crates.io requests, including across search instances.
 
-    The shared HTTP helper performs one attempt and has no retry keyword.
-    Treat failures as partial results without violating the API's rate limit.
+    The shared HTTP helper may expose a retry parameter on newer versions.
+    Use at most one HTTP attempt so this source controls the rate limit.
     """
     global _next_start
     with _request_lock:
