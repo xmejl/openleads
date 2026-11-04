@@ -218,3 +218,31 @@ def test_shared_get_json_signature_is_compatible_and_single_attempt(monkeypatch)
     assert fail is None
     assert len(calls) == 2  # one attempt per distinct request; no implicit retry
     assert all(c[1]["User-Agent"].startswith("OpenLeads-crates/") for c in calls)
+
+
+def test_http_helper_retry_contract_legacy_and_modern(monkeypatch):
+    """The modern shared helper retries unless told not to; crates must not."""
+    import openleads.sources.crates as crates
+
+    clock = [100.0]
+    monkeypatch.setattr(crates, '_clock', lambda: clock[0])
+    monkeypatch.setattr(crates, '_sleep', lambda seconds: clock.__setitem__(0, clock[0] + seconds))
+    monkeypatch.setattr(crates, '_next_start', 0.0)
+    calls = []
+
+    def legacy_json(url, headers=None, cache=None, ttl_ns=None):
+        calls.append(('legacy', url, ttl_ns))
+        return {'ok': True}
+
+    monkeypatch.setattr(crates, 'get_json', legacy_json)
+    assert crates._get('https://crates.io/api/v1/crates', None) == {'ok': True}
+
+    def modern_json(url, headers=None, cache=None, ttl_ns=None, retries=None):
+        calls.append(('modern', url, retries))
+        return {'ok': True}
+
+    monkeypatch.setattr(crates, 'get_json', modern_json)
+    assert crates._get('https://crates.io/api/v1/crates', None) == {'ok': True}
+    assert calls[0][0] == 'legacy'
+    assert calls[1] == ('modern', 'https://crates.io/api/v1/crates', 0)
+    assert clock[0] >= 101.05  # the cross-call 1/sec guard still applies
