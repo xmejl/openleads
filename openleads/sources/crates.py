@@ -27,6 +27,8 @@ _SHARED_HOSTS = {
     "github.com", "github.io", "gitlab.com", "crates.io", "docs.rs",
     "readthedocs.io", "pypi.org", "bitbucket.org", "sourceforge.net",
 }
+_TRUSTED_CODE_HOSTS = {"github.com", "gitlab.com", "bitbucket.org", "codeberg.org"}
+
 _NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 _clock = time.monotonic
 _sleep = time.sleep
@@ -86,6 +88,31 @@ def _domain_for_homepage(homepage: str) -> str:
         return ""
 
 
+
+def _safe_project_website(homepage: str, repository: str, crate_name: str) -> str:
+    """Prefer safe public project URLs; never expose private hosts as websites.
+
+    A rejected upstream homepage/repository falls back to the canonical
+    crates.io listing, which is always known for a validated crate name.
+    """
+    fallback = f"https://crates.io/crates/{quote(crate_name, safe='')}"
+    for raw in (homepage, repository):
+        if not isinstance(raw, str):
+            continue
+        raw = raw.strip()
+        if _domain_for_homepage(raw):
+            return raw
+        try:
+            parts = urlsplit(raw)
+            hostname = (parts.hostname or "").lower().rstrip(".")
+            if (parts.scheme == "https" and hostname in _TRUSTED_CODE_HOSTS
+                    and parts.path.strip("/") and not parts.username
+                    and not parts.password and parts.port in (None, 443)):
+                return raw
+        except (TypeError, ValueError):
+            pass
+    return fallback
+
 def _parse_owners(crate: dict, response: dict) -> list[Entity]:
     """Pure parser: only published human display names are treated as people."""
     if not isinstance(crate, dict) or not isinstance(response, dict):
@@ -98,8 +125,8 @@ def _parse_owners(crate: dict, response: dict) -> list[Entity]:
         return []
     homepage = crate.get("homepage") if isinstance(crate.get("homepage"), str) else ""
     repository = crate.get("repository") if isinstance(crate.get("repository"), str) else ""
-    website = homepage if homepage.startswith(("https://", "http://")) else repository
     domain = _domain_for_homepage(homepage)
+    website = _safe_project_website(homepage, repository, name)
     result = []
     for owner in users:
         if not isinstance(owner, dict):
