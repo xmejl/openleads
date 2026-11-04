@@ -69,6 +69,14 @@ def _domain_for_homepage(homepage: str) -> str:
             pass
         if "." not in hostname or hostname == "localhost" or not hostname.isascii():
             return ""
+        # Project homepages are untrusted; never feed private or IP-alias hosts
+        # to the downstream email/domain enrichment pipeline.
+        if any(hostname == suffix or hostname.endswith("." + suffix)
+               for suffix in ("localhost", "local", "internal", "lan")):
+            return ""
+        if all(re.fullmatch(r"(?:0x[0-9a-f]+|\d+)", part)
+               for part in hostname.split(".")):
+            return ""
         if any(hostname == host or hostname.endswith("." + host) for host in _SHARED_HOSTS):
             return ""
         if not re.fullmatch(r"[a-z0-9.-]+", hostname) or ".." in hostname:
