@@ -7,6 +7,7 @@ violate the API policy. Network failures return partial results.
 """
 from __future__ import annotations
 
+import inspect
 import ipaddress
 import re
 import threading
@@ -49,7 +50,11 @@ def _get(url: str, cache):
         if wait:
             _sleep(wait)
         _next_start = max(_clock(), _next_start) + 1.05
-        return get_json(url, headers=_HEADERS, cache=cache, ttl_ns="dataset")
+        # Older OpenLeads helpers have no retries parameter. Newer versions
+        # retry transient errors internally unless explicitly disabled; that
+        # would violate crates.io's one-request-per-second crawler policy.
+        retry_kw = {"retries": 0} if "retries" in inspect.signature(get_json).parameters else {}
+        return get_json(url, headers=_HEADERS, cache=cache, ttl_ns="dataset", **retry_kw)
 
 
 def _domain_for_homepage(homepage: str) -> str:
