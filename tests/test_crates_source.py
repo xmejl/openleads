@@ -67,7 +67,7 @@ def test_search_uses_identifying_ua_shared_cache_no_retries_and_cap(monkeypatch)
     result = list(src.search(Query(keyword='data tools', count=2, max_companies=2)))
     assert len(result) == 1  # same public user across two crates, unique owner
     assert len(calls) == 3    # one query + 2 owner calls
-    assert all(c[1]['retries'] == 0 for c in calls)
+    assert all('retries' not in c[1] for c in calls)
     assert all(c[1]['ttl_ns'] == 'dataset' for c in calls)
     assert all(c[1]['cache'] is src.cache for c in calls)
     assert all('openleads' in c[1]['headers']['User-Agent'].lower() for c in calls)
@@ -184,3 +184,37 @@ def test_crate_website_keeps_public_project_homepages_and_codehosts():
     row, = _parse_owners(custom_repo, owner_response)
     assert row.website == 'https://forge.fastcsv.dev/repo'
 
+
+
+
+def test_shared_get_json_signature_is_compatible_and_single_attempt(monkeypatch):
+    """Use the real shared JSON helper, replacing only its network boundary.
+
+    This catches unsupported keywords missed by mocked get_json(**kwargs).
+    The production _http.get_json has no retries parameter and attempts
+    exactly once, so crates.io remains within the source's rate limit.
+    """
+    import urllib.error
+    from openleads import _http
+    import openleads.sources.crates as crates
+
+    calls = []
+
+    def fake_open(url, headers=None, timeout=15, data=None):
+        calls.append((url, headers))
+        if url.endswith("q=ok"):
+            return '{"crates":[]}'
+        raise urllib.error.URLError("offline fixture failure")
+
+    monkeypatch.setattr(_http, "_open", fake_open)
+    monkeypatch.setattr(crates, "get_json", _http.get_json)
+    monkeypatch.setattr(crates, "_clock", lambda: 0.0)
+    monkeypatch.setattr(crates, "_sleep", lambda seconds: None)
+    monkeypatch.setattr(crates, "_next_start", 0.0)
+
+    ok = crates._get("https://crates.io/api/v1/crates?q=ok", cache=None)
+    fail = crates._get("https://crates.io/api/v1/crates?q=error", cache=None)
+    assert ok == {"crates": []}
+    assert fail is None
+    assert len(calls) == 2  # one attempt per distinct request; no implicit retry
+    assert all(c[1]["User-Agent"].startswith("OpenLeads-crates/") for c in calls)
