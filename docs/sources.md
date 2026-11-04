@@ -130,6 +130,28 @@ def search(self, query):
   optional token for higher limits (like GitHub's `GITHUB_TOKEN`), make it
   optional; keyless must still work.
 
+## Built-in crates.io maintainer source
+
+Use `openleads find --source crates --count 10 "data tools"` to discover
+published maintainers of Rust crates related to a topic. This source uses the
+public crates.io search and owner-list APIs, not private contact data.
+
+To respect crates.io's data-access policy, requests are globally serialized
+within the process (at least 1.05 seconds between starts), carry an identifying
+User-Agent, never retry automatically, and inspect at most eight crates per
+query. Results are cached in the shared dataset cache. Failed owner lookups
+return fewer records, not invented data.
+
+An owner's display name is included only when the API publishes one; team
+accounts are skipped. A `domain` comes **only from the crate's project homepage**
+when it is not a shared platform host. It is *not* evidence of the owner's
+personal email, employer, or authority to contact them. No address is labeled
+as a known public email. Results can have an empty domain.
+
+Run offline regression tests with
+`pytest tests/test_crates_source.py`; live API and email delivery are not
+required or covered by those tests.
+
 ## Testing your parser
 
 Keep the network-touching part thin and the parsing pure, then test the parser
