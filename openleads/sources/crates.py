@@ -39,8 +39,8 @@ _next_start = 0.0
 def _get(url: str, cache):
     """Serialize all crates.io requests, including across search instances.
 
-    Unlike OpenLeads' other sources, retries=0 is mandatory here: the shared
-    helper otherwise retries some 429/502 responses sooner than policy allows.
+    The shared HTTP helper performs one attempt and has no retry keyword.
+    Treat failures as partial results without violating the API's rate limit.
     """
     global _next_start
     with _request_lock:
@@ -49,7 +49,7 @@ def _get(url: str, cache):
         if wait:
             _sleep(wait)
         _next_start = max(_clock(), _next_start) + 1.05
-        return get_json(url, headers=_HEADERS, cache=cache, ttl_ns="dataset", retries=0)
+        return get_json(url, headers=_HEADERS, cache=cache, ttl_ns="dataset")
 
 
 def _domain_for_homepage(homepage: str) -> str:
