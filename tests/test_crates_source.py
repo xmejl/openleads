@@ -144,3 +144,43 @@ def test_private_and_numeric_alias_homepage_domains_are_rejected():
     ):
         assert _domain_for_homepage(homepage) == "", homepage
     assert _domain_for_homepage("https://www.public-project.dev/docs") == "public-project.dev"
+
+def test_crate_website_ignores_unsafe_homepage_and_repository():
+    owner_response = {'users': [_owner('alice', 'Alice Smith')]}
+    crate = _crate('fastcsv', 'http://127.0.0.1/admin',
+                   'https://github.com/acme/fastcsv')
+    row, = _parse_owners(crate, owner_response)
+    assert row.website == 'https://github.com/acme/fastcsv'
+    assert row.domain == ''
+
+    for private_url in (
+        'http://127.0.0.1/secrets', 'https://127.1/secret',
+        'http://169.254.169.254/latest/meta-data/',
+        'https://service.internal/ops', 'http://router.local/',
+        'file:///etc/passwd', 'javascript:alert(1)',
+        'https://user:password@github.com/acme/fastcsv',
+    ):
+        unsafe = _crate('fastcsv', private_url, 'http://localhost/repo')
+        rows = _parse_owners(unsafe, owner_response)
+        assert len(rows) == 1
+        assert rows[0].website == 'https://crates.io/crates/fastcsv', private_url
+        assert rows[0].domain == ''
+
+
+def test_crate_website_keeps_public_project_homepages_and_codehosts():
+    owner_response = {'users': [_owner('bob', 'Bob Builder')]}
+    good = _crate('fastcsv', 'https://www.fastcsv.dev/docs',
+                  'https://github.com/acme/fastcsv')
+    row, = _parse_owners(good, owner_response)
+    assert row.website == 'https://www.fastcsv.dev/docs'
+    assert row.domain == 'fastcsv.dev'
+
+    github_homepage = _crate('fastcsv', 'https://github.com/acme/fastcsv')
+    row, = _parse_owners(github_homepage, owner_response)
+    assert row.website == 'https://github.com/acme/fastcsv'
+    assert row.domain == ''
+
+    custom_repo = _crate('fastcsv', '', 'https://forge.fastcsv.dev/repo')
+    row, = _parse_owners(custom_repo, owner_response)
+    assert row.website == 'https://forge.fastcsv.dev/repo'
+
