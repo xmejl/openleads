@@ -128,3 +128,19 @@ def test_source_does_not_use_location_to_claim_filter(monkeypatch):
     monkeypatch.setattr('openleads.sources.crates.get_json',fake_json)
     list(CratesSource().search(Query(keyword='k8s',count=2)))
     assert all('k8s' in u for u in urls)
+
+
+def test_private_and_numeric_alias_homepage_domains_are_rejected():
+    # crates.io records are external data; avoid passing private hostnames
+    # or browser-recognized numeric loopback aliases into enrichment.
+    for homepage in (
+        "https://metadata.google.internal/latest/meta-data/",
+        "http://router.local/",
+        "http://127.1/",
+        "http://0x7f.1/",
+        "http://0177.0.0.1/",
+        "https://api.lan/",
+        "https://ops.private.localhost/",
+    ):
+        assert _domain_for_homepage(homepage) == "", homepage
+    assert _domain_for_homepage("https://www.public-project.dev/docs") == "public-project.dev"
